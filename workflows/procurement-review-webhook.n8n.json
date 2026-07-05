@@ -1,0 +1,415 @@
+{
+  "name": "Invo Match - Procurement Review Webhook",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "value": 1
+            }
+          ]
+        }
+      },
+      "id": "a1d8bf61-25e2-4f36-96b0-13f5eb5e5ebc",
+      "name": "Poll Every 1 Min",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [
+        100,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{$env.NOCODB_BASE_URL}}/api/v2/tables/{{$env.NOCODB_INVOICES_TABLE_ID}}/records",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "xc-token",
+              "value": "={{$env.NOCODB_API_TOKEN}}"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "where",
+              "value": "=(override_decision,neq,None)~and(validation_status,eq,Procurement Review)"
+            }
+          ]
+        },
+        "options": {
+          "splitIntoItems": true,
+          "splitKey": "list"
+        }
+      },
+      "id": "b2eb4e81-46b0-4f51-a9f9-e374d6c4a85c",
+      "name": "Get Pending Reviews",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        320,
+        300
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "dataType": "string",
+        "value1": "={{$json.override_decision}}",
+        "rules": {
+          "rules": [
+            {
+              "value2": "Approved",
+              "outputIndex": 0
+            },
+            {
+              "value2": "Rejected",
+              "outputIndex": 1
+            }
+          ]
+        }
+      },
+      "id": "c3bc4b81-56b0-4f51-b9f9-e374d6c4a85d",
+      "name": "Check Override Status",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1,
+      "position": [
+        760,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{$env.NOCODB_BASE_URL}}/api/v2/tables/{{$env.NOCODB_INVOICES_TABLE_ID}}/records",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "xc-token",
+              "value": "={{$env.NOCODB_API_TOKEN}}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"id\": {{$json.id}},\n  \"validation_status\": \"Ready for Payment\",\n  \"approved_at\": \"{{new Date().toISOString()}}\"\n}",
+        "options": {}
+      },
+      "id": "d4da4b91-67b0-5f61-c9f9-e374d6c4b85e",
+      "name": "Update Invoice to Approved",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        980,
+        200
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{$env.NOCODB_BASE_URL}}/api/v2/tables/{{$env.NOCODB_INVOICES_TABLE_ID}}/records",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "xc-token",
+              "value": "={{$env.NOCODB_API_TOKEN}}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"id\": {{$json.id}},\n  \"validation_status\": \"Rejected\",\n  \"rejected_at\": \"{{new Date().toISOString()}}\"\n}",
+        "options": {}
+      },
+      "id": "e5eb4c91-78c0-6f71-d9f9-e374d6c4c85f",
+      "name": "Update Invoice to Rejected",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1200,
+        400
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.NOCODB_BASE_URL}}/api/v2/tables/{{$env.NOCODB_AUDIT_LOG_TABLE_ID}}/records",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "xc-token",
+              "value": "={{$env.NOCODB_API_TOKEN}}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"entity_type\": \"Invoice\",\n  \"entity_id\": \"{{$json.id}}\",\n  \"action\": \"override_applied\",\n  \"actor\": \"Reviewer\",\n  \"previous_status\": \"Procurement Review\",\n  \"new_status\": \"Ready for Payment\",\n  \"details_json\": \"{\\\"reason\\\": \\\"Manual approval override\\\"}\"\n}",
+        "options": {}
+      },
+      "id": "f6fc4d91-89c0-7f71-e9f9-e374d6c4d86a",
+      "name": "Log Approval Audit",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1200,
+        200
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.NOCODB_BASE_URL}}/api/v2/tables/{{$env.NOCODB_AUDIT_LOG_TABLE_ID}}/records",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "xc-token",
+              "value": "={{$env.NOCODB_API_TOKEN}}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"entity_type\": \"Invoice\",\n  \"entity_id\": \"{{$json.id}}\",\n  \"action\": \"override_applied\",\n  \"actor\": \"Reviewer\",\n  \"previous_status\": \"Procurement Review\",\n  \"new_status\": \"Rejected\",\n  \"details_json\": \"{\\\"reason\\\": \\\"Manual rejection override\\\"}\"\n}",
+        "options": {}
+      },
+      "id": "0d29b6ff-b52d-4b2a-8a41-dcc576c3a694",
+      "name": "Log Rejection Audit",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1420,
+        400
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "jsCode": "return $input.first().json.list.map(item => ({ json: item }));"
+      },
+      "id": "c1c7d918-89c0-7f71-e9f9-e374d6c4d86b",
+      "name": "Split Invoices List",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        540,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "rejection-reason-check",
+              "leftValue": "={{$json.rejection_reason}}",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "7112eb6a-d7cc-4b7d-874b-17596ac67f4a",
+      "name": "Check Rejection Reason",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        980,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{$env.NOCODB_BASE_URL}}/api/v2/tables/{{$env.NOCODB_INVOICES_TABLE_ID}}/records",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "xc-token",
+              "value": "={{$env.NOCODB_API_TOKEN}}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"id\": {{$json.id}},\n  \"override_decision\": \"None\",\n  \"reviewer_comments\": \"System: Rejection was attempted without a reason. A rejection reason is required.\"\n}",
+        "options": {}
+      },
+      "id": "689bd762-b89e-4f4a-a7e1-ccdb574b26d7",
+      "name": "Reset Override Decision",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1200,
+        600
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{$env.SENDER_EMAIL || 'procurement-automation@example.com'}}",
+        "toEmail": "={{$env.PROCUREMENT_REVIEW_EMAIL || 'reviewer@example.com'}}",
+        "subject": "=Rejection Reason Required - Invoice {{$json.invoice_number}}",
+        "html": "=<p>An attempt was made to reject Invoice <strong>{{$json.invoice_number}}</strong> without providing a rejection reason.</p><p>Please specify a rejection reason in NocoDB before rejecting this invoice.</p>"
+      },
+      "id": "41231e9e-b6eb-430a-81d5-09d3ca1dc7a3",
+      "name": "Send Rejection Reason Warning Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 1,
+      "position": [
+        1420,
+        600
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 10000,
+      "credentials": {
+        "smtp": {
+          "id": "smtp_credentials_id",
+          "name": "SMTP Credentials"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Poll Every 1 Min": {
+      "main": [
+        [
+          {
+            "node": "Get Pending Reviews",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Pending Reviews": {
+      "main": [
+        [
+          {
+            "node": "Split Invoices List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Override Status": {
+      "main": [
+        [
+          {
+            "node": "Update Invoice to Approved",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Check Rejection Reason",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Invoice to Approved": {
+      "main": [
+        [
+          {
+            "node": "Log Approval Audit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Invoice to Rejected": {
+      "main": [
+        [
+          {
+            "node": "Log Rejection Audit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Invoices List": {
+      "main": [
+        [
+          {
+            "node": "Check Override Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Rejection Reason": {
+      "main": [
+        [
+          {
+            "node": "Update Invoice to Rejected",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reset Override Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reset Override Decision": {
+      "main": [
+        [
+          {
+            "node": "Send Rejection Reason Warning Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {},
+  "active": false
+}

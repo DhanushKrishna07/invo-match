@@ -1,0 +1,1150 @@
+{
+  "name": "Invo Match - Main Email Ingestion",
+  "nodes": [
+    {
+      "parameters": {
+        "postTriggerFunction": "",
+        "mailbox": "={{$env.IMAP_MAILBOX || 'INBOX'}}",
+        "onEmailReceived": "nothing",
+        "downloadAttachments": true,
+        "options": {
+          "forceUtf8": true
+        }
+      },
+      "id": "1d8bf614-25e2-4f36-96b0-13f5eb5e5ebc",
+      "name": "Email Read (IMAP)",
+      "type": "n8n-nodes-base.emailReadImap",
+      "typeVersion": 1,
+      "position": [
+        100,
+        300
+      ],
+      "credentials": {
+        "imap": {
+          "id": "imap_credentials_id",
+          "name": "IMAP Account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 10000
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "pdf-filter",
+              "leftValue": "={{$json.attachment.contentType}}",
+              "rightValue": "application/pdf",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "2db4e815-46b0-4f51-a9f9-e374d6c4a85c",
+      "name": "Filter PDF Attachments",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        320,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Read PDF binary directly and base64-encode it for Gemini.\n// This avoids the broken extractFromFile PDF node that requires standardFontDataUrl config.\nlet binaryPropertyName = 'attachment_0';\nif ($input.item.binary && !$input.item.binary[binaryPropertyName]) {\n  if ($input.item.binary['data']) {\n    binaryPropertyName = 'data';\n  } else {\n    const keys = Object.keys($input.item.binary);\n    if (keys.length > 0) {\n      binaryPropertyName = keys[0];\n    }\n  }\n}\nconst binaryBuffer = await this.helpers.getBinaryDataBuffer(0, binaryPropertyName);\nreturn [{\n  json: {\n    base64Pdf: binaryBuffer.toString('base64'),\n    ocr_fallback_triggered: false\n  }\n}];"
+      },
+      "id": "3bc4b815-56b0-4f51-b9f9-e374d6c4d86d",
+      "name": "Encode PDF as Base64",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        540,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://generativelanguage.googleapis.com/v1beta/models/{{$env.GEMINI_MODEL || 'gemini-2.5-flash'}}:generateContent?key={{$env.GEMINI_API_KEY}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  \"contents\": [{\n    \"parts\": [\n      { \"text\": \"You are an invoice data extraction engine. Extract all structured data from this invoice PDF and return only valid JSON matching the schema exactly. Do not include markdown, code fences, comments, or explanations. Return the raw JSON only.\\n\\nRequired Schema:\\n{\\n  \\\"vendor_name\\\": \\\"string or null\\\",\\n  \\\"vendor_id\\\": \\\"string or null\\\",\\n  \\\"purchase_order_number\\\": \\\"string or null\\\",\\n  \\\"invoice_number\\\": \\\"string or null\\\",\\n  \\\"invoice_date\\\": \\\"YYYY-MM-DD or null\\\",\\n  \\\"due_date\\\": \\\"YYYY-MM-DD or null\\\",\\n  \\\"currency\\\": \\\"INR, USD, EUR or null\\\",\\n  \\\"net_amount\\\": 0.0,\\n  \\\"tax_amount\\\": 0.0,\\n  \\\"gross_amount\\\": 0.0,\\n  \\\"line_items\\\": [\\n    {\\n      \\\"line_number\\\": 1,\\n      \\\"sku\\\": \\\"string or null\\\",\\n      \\\"description\\\": \\\"string\\\",\\n      \\\"quantity\\\": 0.0,\\n      \\\"unit_price\\\": 0.0,\\n      \\\"tax_rate\\\": 0.0,\\n      \\\"line_net_amount\\\": 0.0,\\n      \\\"line_tax_amount\\\": 0.0,\\n      \\\"line_gross_amount\\\": 0.0\\n    }\\n  ],\\n  \\\"confidence_score\\\": 0.95,\\n  \\\"extraction_warnings\\\": []\\n}\" },\n      { \"inline_data\": { \"mime_type\": \"application/pdf\", \"data\": $json.base64Pdf } }\n    ]\n  }],\n  \"generationConfig\": {\n    \"responseMimeType\": \"application/json\"\n  }\n} }}",
+        "options": {}
+      },
+      "id": "4da4b916-67b0-5f61-c9f9-e374d6c4b85e",
+      "name": "Gemini AI Extraction",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        760,
+        300
+      ],
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 15000
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{$env.NOCODB_BASE_URL}}/api/v2/tables/{{$env.NOCODB_PURCHASE_ORDERS_TABLE_ID}}/records",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "xc-token",
+              "value": "={{$env.NOCODB_API_TOKEN}}"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "where",
+              "value": "=(po_number,eq,{{$node[\"Normalize Extracted JSON\"].json.extracted.purchase_order_number}})"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "5eb4c917-78c0-6f71-d9f9-e374d6c4c85f",
+      "name": "NocoDB PO Lookup",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1180,
+        300
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "jsCode": "/* Normalization & Matching Node Code */\n// 1. Normalization Helpers\nfunction normalizeVendorName(name) {\n  if (!name) return \"\";\n  return name.toLowerCase().replace(/[.,\\/#!$%\\^&\\*;:{}=\\-_`~()]/g, \"\").replace(/\\b(pvt ltd|private limited|ltd|limited|llc|inc|corp|corporation|gmbh|co)\\b/g, \"\").replace(/\\s+/g, \" \").trim();\n}\n\nfunction normalizeCurrency(currency) {\n  if (!currency) return null;\n  const cleaned = currency.trim().toUpperCase();\n  if (cleaned === \"$\" || cleaned === \"USD\") return \"USD\";\n  if (cleaned === \"â‚¹\" || cleaned === \"INR\" || cleaned === \"RS\") return \"INR\";\n  if (cleaned === \"â‚¬\" || cleaned === \"EUR\") return \"EUR\";\n  return cleaned;\n}\n\nfunction normalizeAmount(value) {\n  if (value === null || value === undefined) return 0.00;\n  if (typeof value === \"string\") {\n    const cleaned = value.replace(/[^\\d.-]/g, \"\");\n    const parsed = parseFloat(cleaned);\n    return isNaN(parsed) ? 0.00 : Math.round(parsed * 100) / 100;\n  }\n  return typeof value === \"number\" ? Math.round(value * 100) / 100 : 0.00;\n}\n\nfunction normalizeQuantity(value) {\n  if (value === null || value === undefined) return 0;\n  if (typeof value === \"string\") {\n    const cleaned = value.replace(/[^\\d.-]/g, \"\");\n    const parsed = parseFloat(cleaned);\n    return isNaN(parsed) ? 0 : parsed;\n  }\n  return typeof value === \"number\" ? value : 0;\n}\n\nfunction normalizeDate(value) {\n  if (!value) return null;\n  const str = String(value).trim();\n  const match = str.match(/^(\\d{4})[-/](\\d{1,2})[-/](\\d{1,2})/);\n  if (match) return `${match[1]}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')}`;\n  try {\n    const d = new Date(str);\n    if (isNaN(d.getTime())) return null;\n    if (str.includes(\"Z\") || str.includes(\"T\")) {\n      return d.toISOString().split(\"T\")[0];\n    } else {\n      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;\n    }\n  } catch {\n    return null;\n  }\n}\n\n// 2. Parse AI response - Gemini now always gets the PDF directly as base64\nlet geminiRaw;\ntry {\n  geminiRaw = $node[\"Gemini AI Extraction\"].json.candidates[0].content.parts[0].text;\n} catch (e) {\n  throw new Error('Gemini AI Extraction failed: ' + e.message);\n}\nconst parsed = JSON.parse(geminiRaw.replace(/```json\\n?|```/g, \"\").trim());\n\n// Normalize Extracted\nconst extracted = {\n  vendor_name: parsed.vendor_name ? parsed.vendor_name.trim() : null,\n  vendor_id: parsed.vendor_id ? parsed.vendor_id.trim() : null,\n  purchase_order_number: parsed.purchase_order_number ? parsed.purchase_order_number.trim() : null,\n  invoice_number: parsed.invoice_number ? parsed.invoice_number.trim() : null,\n  invoice_date: normalizeDate(parsed.invoice_date),\n  due_date: normalizeDate(parsed.due_date),\n  currency: normalizeCurrency(parsed.currency),\n  net_amount: normalizeAmount(parsed.net_amount),\n  tax_amount: normalizeAmount(parsed.tax_amount),\n  gross_amount: normalizeAmount(parsed.gross_amount),\n  confidence_score: parseFloat(parsed.confidence_score) || 0.00,\n  extraction_warnings: Array.isArray(parsed.extraction_warnings) ? parsed.extraction_warnings : [],\n  ocr_used: false,\n  low_confidence_reason: null,\n  line_items: (parsed.line_items || []).map(l => ({\n    line_number: parseInt(l.line_number) || 0,\n    sku: l.sku ? l.sku.trim() : null,\n    description: l.description ? l.description.trim() : \"\",\n    quantity: normalizeQuantity(l.quantity),\n    unit_price: normalizeAmount(l.unit_price),\n    tax_rate: normalizeQuantity(l.tax_rate),\n    line_net_amount: normalizeAmount(l.line_net_amount),\n    line_tax_amount: normalizeAmount(l.line_tax_amount),\n    line_gross_amount: normalizeAmount(l.line_gross_amount)\n  }))\n};\n\nreturn {\n  extracted\n};"
+      },
+      "id": "6fc4d918-89c0-7f71-e9f9-e374d6c4d86a",
+      "name": "Normalize Extracted JSON",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        970,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{$env.NOCODB_BASE_URL}}/api/v2/tables/{{$env.NOCODB_PO_LINE_ITEMS_TABLE_ID}}/records",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "xc-token",
+              "value": "={{$env.NOCODB_API_TOKEN}}"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "where",
+              "value": "=(po_number,eq,{{$node[\"Normalize Extracted JSON\"].json.extracted.purchase_order_number}})"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e5eb5c91-78c0-7f71-e9f9-e374d6c4d86b",
+      "name": "NocoDB PO Line Items Lookup",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1400,
+        300
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "jsCode": "const invoiceId = $node[\"Store Invoice in NocoDB\"].json.id;\nconst lineItems = $node[\"Call Matching Service\"].json.validation.line_items || [];\nreturn lineItems.map(item => ({\n  json: {\n    invoices: invoiceId,\n    line_number: item.line_number,\n    sku: item.sku,\n    description: item.description,\n    quantity: item.quantity,\n    unit_price: item.unit_price,\n    tax_rate: item.tax_rate,\n    line_net_amount: item.line_net_amount,\n    line_tax_amount: item.line_tax_amount,\n    line_gross_amount: item.line_gross_amount,\n    matched_po_line_id: item.matched_po_line_id,\n    match_status: item.match_status,\n    match_notes: item.match_notes\n  }\n}));"
+      },
+      "id": "e6eb6c92-78c0-7f71-e9f9-e374d6c4d86b",
+      "name": "Prepare Invoice Line Items",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2060,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.NOCODB_BASE_URL}}/api/v2/tables/{{$env.NOCODB_INVOICE_LINE_ITEMS_TABLE_ID}}/records",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "xc-token",
+              "value": "={{$env.NOCODB_API_TOKEN}}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{$json}}",
+        "options": {}
+      },
+      "id": "e7eb7c93-78c0-7f71-e9f9-e374d6c4d86b",
+      "name": "Store Invoice Line Items",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        2280,
+        300
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "jsCode": "const invoiceId = $node[\"Store Invoice in NocoDB\"].json.id;\nconst results = $node[\"Call Matching Service\"].json.validation.results || [];\nconst poNumber = $node[\"Call Matching Service\"].json.po ? $node[\"Call Matching Service\"].json.po.po_number : null;\nreturn results.map(item => ({\n  json: {\n    invoices: invoiceId,\n    po_number: poNumber,\n    field_name: item.fieldName || item.field_name,\n    rule_category: item.ruleCategory || item.rule_category,\n    invoice_value: String(item.invoiceValue !== undefined ? item.invoiceValue : (item.invoice_value || \"\")),\n    po_value: String(item.poValue !== undefined ? item.poValue : (item.po_value || \"\")),\n    match_status: item.matchStatus || item.match_status,\n    severity: item.severity,\n    rule_id: item.ruleId || item.rule_id,\n    message: item.message\n  }\n}));"
+      },
+      "id": "e8eb8c94-78c0-7f71-e9f9-e374d6c4d86b",
+      "name": "Prepare Validation Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2500,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.NOCODB_BASE_URL}}/api/v2/tables/{{$env.NOCODB_VALIDATION_RESULTS_TABLE_ID}}/records",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "xc-token",
+              "value": "={{$env.NOCODB_API_TOKEN}}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{$json}}",
+        "options": {}
+      },
+      "id": "e9eb9c95-78c0-7f71-e9f9-e374d6c4d86b",
+      "name": "Store Validation Results",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        2720,
+        300
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "jsCode": "const crypto = require('crypto');\n\nfor (const item of $input.all()) {\n  let binaryPropertyName = 'attachment_0';\n  if (!item.binary || !item.binary[binaryPropertyName]) {\n    if (item.binary && item.binary['data']) {\n      binaryPropertyName = 'data';\n    }\n  }\n  \n  if (item.binary && item.binary[binaryPropertyName]) {\n    const binaryData = item.binary[binaryPropertyName];\n    const binaryBuffer = await this.helpers.getBinaryDataBuffer(0, binaryPropertyName);\n    const hash = crypto.createHash('sha256').update(binaryBuffer).digest('hex');\n    \n    item.json.attachmentHash = hash;\n    item.json.binaryPropertyName = binaryPropertyName;\n    item.json.filename = binaryData.fileName || 'invoice.pdf';\n  } else {\n    item.json.attachmentHash = null;\n    item.json.binaryPropertyName = 'data';\n    item.json.filename = 'invoice.pdf';\n  }\n}\n\nreturn $input.all();"
+      },
+      "id": "7a260fca-f6f2-4d84-b811-792fa8419e36",
+      "name": "Compute Attachment Hash",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        430,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "fileName": "=/data/invoices/{{$json.attachmentHash}}.pdf",
+        "dataPropertyName": "={{$json.binaryPropertyName}}"
+      },
+      "id": "c2a65ef0-21a9-4d1b-9d61-7182197a4795",
+      "name": "Write Binary PDF File",
+      "type": "n8n-nodes-base.writeBinaryFile",
+      "typeVersion": 1,
+      "position": [
+        430,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{$env.NOCODB_BASE_URL}}/api/v2/tables/{{$env.NOCODB_INVOICES_TABLE_ID}}/records",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "xc-token",
+              "value": "={{$env.NOCODB_API_TOKEN}}"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "limit",
+              "value": "1000"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "d266c5ca-71eb-4cbd-a272-5b490cf05d2a",
+      "name": "NocoDB Invoices Lookup",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1080,
+        200
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{$env.NOCODB_BASE_URL}}/api/v2/tables/{{$env.NOCODB_VENDORS_TABLE_ID}}/records",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "xc-token",
+              "value": "={{$env.NOCODB_API_TOKEN}}"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "where",
+              "value": "=(vendor_id,eq,{{$node[\"NocoDB PO Lookup\"].json.list?.[0]?.vendor_id || ''}})"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "bbd46f3c-3cf8-4e8d-86bf-554d60176b92",
+      "name": "NocoDB Vendor Lookup",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1320,
+        200
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "jsCode": "const poLookup = $node[\"NocoDB PO Lookup\"].json.list || [];\nconst poRaw = poLookup[0] || null;\nconst poLineItems = $node[\"NocoDB PO Line Items Lookup\"].json.list || [];\nconst vendorLookup = $node[\"NocoDB Vendor Lookup\"].json.list || [];\nconst existingInvoices = $node[\"NocoDB Invoices Lookup\"].json.list || [];\nconst attachmentHash = $node[\"Compute Attachment Hash\"].json.attachmentHash;\n\n// Extract vendor aliases\nlet vendorAliases = [];\nif (vendorLookup[0] && vendorLookup[0].vendor_aliases) {\n  try {\n    vendorAliases = typeof vendorLookup[0].vendor_aliases === 'string' \n      ? JSON.parse(vendorLookup[0].vendor_aliases) \n      : vendorLookup[0].vendor_aliases;\n  } catch (e) {\n    vendorAliases = [];\n  }\n}\n\nconst po = poRaw ? {\n  id: poRaw.id,\n  po_number: poRaw.po_number,\n  vendor_id: poRaw.vendor_id,\n  vendor_name_snapshot: poRaw.vendor_name_snapshot,\n  currency: poRaw.currency,\n  approval_status: poRaw.approval_status,\n  approved_net_amount: parseFloat(poRaw.approved_net_amount) || 0.00,\n  approved_tax_amount: parseFloat(poRaw.approved_tax_amount) || 0.00,\n  approved_gross_amount: parseFloat(poRaw.approved_gross_amount) || 0.00,\n  remaining_amount: parseFloat(poRaw.remaining_amount) || 0.00,\n  tolerance_percent: parseFloat(poRaw.tolerance_percent) || 2.00,\n  tolerance_amount: parseFloat(poRaw.tolerance_amount) || 100.00,\n  line_items: poLineItems.map(item => ({\n    id: item.id,\n    line_number: parseInt(item.line_number) || 0,\n    sku: item.sku,\n    description: item.description,\n    quantity: parseFloat(item.quantity) || 0.0,\n    unit_price: parseFloat(item.unit_price) || 0.00,\n    tax_rate: parseFloat(item.tax_rate) || 0.00,\n    line_net_amount: parseFloat(item.line_net_amount) || 0.00,\n    line_tax_amount: parseFloat(item.line_tax_amount) || 0.00,\n    line_gross_amount: parseFloat(item.line_gross_amount) || 0.00\n  }))\n} : null;\n\nconst options = {\n  existingInvoices,\n  attachmentHash,\n  vendorAliases,\n  multiplePOsFound: poLookup.length > 1\n};\n\nreturn {\n  invoice: $node[\"Normalize Extracted JSON\"].json.extracted,\n  po,\n  options\n};"
+      },
+      "id": "d92cca38-d557-4554-b65c-facffdd7ba9c",
+      "name": "Build PO Object",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1560,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://matching-service:4000/match",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ invoice: $json.invoice, po: $json.po, options: $json.options }) }}",
+        "options": {}
+      },
+      "id": "ef7c0bbe-f7a5-46a3-a8da-5513a1ae24e8",
+      "name": "Call Matching Service",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1680,
+        200
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.NOCODB_BASE_URL}}/api/v2/tables/{{$env.NOCODB_INVOICES_TABLE_ID}}/records",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "xc-token",
+              "value": "={{$env.NOCODB_API_TOKEN}}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ vendor_name: $node['Call Matching Service'].json.invoice.vendor_name, vendor_id: $node['Call Matching Service'].json.invoice.vendor_id, purchase_order_number: $node['Call Matching Service'].json.invoice.purchase_order_number, purchase_order_match: $node['Call Matching Service'].json.purchase_order_match, invoice_number: $node['Call Matching Service'].json.invoice.invoice_number, invoice_date: $node['Call Matching Service'].json.invoice.invoice_date, due_date: $node['Call Matching Service'].json.invoice.due_date, currency: $node['Call Matching Service'].json.invoice.currency, net_amount: $node['Call Matching Service'].json.invoice.net_amount, tax_amount: $node['Call Matching Service'].json.invoice.tax_amount, gross_amount: $node['Call Matching Service'].json.invoice.gross_amount, validation_status: $node['Call Matching Service'].json.validation.status, discrepancy_summary: ($node['Call Matching Service'].json.validation.discrepancies || []).join(', '), override_decision: 'None', attachment_hash: $node['Compute Attachment Hash'].json.attachmentHash, invoice_attachment: '/data/invoices/' + $node['Compute Attachment Hash'].json.attachmentHash + '.pdf', sender_name: $node['Email Read (IMAP)'].json.from?.value?.[0]?.name || $node['Email Read (IMAP)'].json.from?.text || $node['Email Read (IMAP)'].json.sender_name || 'Demo Reviewer', sender_email: $node['Email Read (IMAP)'].json.from?.value?.[0]?.address || $node['Email Read (IMAP)'].json.sender_email || 'reviewer@example.com', email_subject: $node['Email Read (IMAP)'].json.subject || $node['Email Read (IMAP)'].json.email_subject || 'Manual upload check', received_at: $node['Email Read (IMAP)'].json.date || new Date().toISOString(), confidence_score: $node['Call Matching Service'].json.invoice.confidence_score || 0, extraction_warnings: JSON.stringify($node['Call Matching Service'].json.invoice.extraction_warnings || []), ocr_used: $node['Call Matching Service'].json.invoice.ocr_used || false, low_confidence_reason: $node['Call Matching Service'].json.invoice.low_confidence_reason || '', duplicate_flag: $node['Call Matching Service'].json.duplicate_flag || false, duplicate_type: $node['Call Matching Service'].json.duplicate_type || '' }) }}"
+      },
+      "id": "511f3b10-ca81-40c2-a9c1-8044ce659f08",
+      "name": "Store Invoice in NocoDB",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1800,
+        200
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "entity_id",
+              "value": "={{$node['Normalize Extracted JSON'].json.extracted.invoice_number || 'Unknown'}}"
+            },
+            {
+              "name": "action",
+              "value": "invoice_extracted"
+            },
+            {
+              "name": "details",
+              "value": "Invoice metadata extracted successfully"
+            },
+            {
+              "name": "previous_status",
+              "value": ""
+            },
+            {
+              "name": "new_status",
+              "value": ""
+            }
+          ]
+        }
+      },
+      "id": "8929b267-a5df-4480-be4d-6b7416c8c63b",
+      "name": "Prep Audit: Extracted",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [
+        970,
+        450
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "oC8ETFMtyXEY4EJt",
+          "mode": "list",
+          "cachedResultName": "Invo Match - Log Audit Event Sub-workflow"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {}
+        },
+        "options": {}
+      },
+      "id": "60643b20-dd37-47e1-9cc3-cc39f08269f2",
+      "name": "Log Audit: Extracted",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        1130,
+        450
+      ]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "entity_id",
+              "value": "={{$node['Normalize Extracted JSON'].json.extracted.invoice_number || 'Unknown'}}"
+            },
+            {
+              "name": "action",
+              "value": "po_lookup_completed"
+            },
+            {
+              "name": "details",
+              "value": "=PO Lookup completed for PO: {{$node['Normalize Extracted JSON'].json.extracted.purchase_order_number || 'None'}}"
+            },
+            {
+              "name": "previous_status",
+              "value": ""
+            },
+            {
+              "name": "new_status",
+              "value": ""
+            }
+          ]
+        }
+      },
+      "id": "b960332e-d376-49e9-80ac-3e2056701684",
+      "name": "Prep Audit: PO Lookup",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [
+        1460,
+        450
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "oC8ETFMtyXEY4EJt",
+          "mode": "list",
+          "cachedResultName": "Invo Match - Log Audit Event Sub-workflow"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {}
+        },
+        "options": {}
+      },
+      "id": "914389be-20e7-4c85-b43d-8af288e62d4d",
+      "name": "Log Audit: PO Lookup",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        1620,
+        450
+      ]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "entity_id",
+              "value": "={{$node['Normalize Extracted JSON'].json.extracted.invoice_number || 'Unknown'}}"
+            },
+            {
+              "name": "action",
+              "value": "validation_completed"
+            },
+            {
+              "name": "details",
+              "value": "=Validation completed. Resulting Status: {{$node['Call Matching Service'].json.validation_status}}"
+            },
+            {
+              "name": "previous_status",
+              "value": ""
+            },
+            {
+              "name": "new_status",
+              "value": ""
+            }
+          ]
+        }
+      },
+      "id": "05666288-e543-4b4d-920a-e7c20875e4a2",
+      "name": "Prep Audit: Validation",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [
+        1740,
+        450
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "oC8ETFMtyXEY4EJt",
+          "mode": "list",
+          "cachedResultName": "Invo Match - Log Audit Event Sub-workflow"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {}
+        },
+        "options": {}
+      },
+      "id": "d85bae58-a38b-4390-83ec-d6aca1abde7c",
+      "name": "Log Audit: Validation",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        1900,
+        450
+      ]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "entity_id",
+              "value": "={{$node['Normalize Extracted JSON'].json.extracted.invoice_number || 'Unknown'}}"
+            },
+            {
+              "name": "action",
+              "value": "={{$node['Call Matching Service'].json.validation_status === 'Ready for Payment' ? 'ready_for_payment' : ($node['Call Matching Service'].json.validation_status === 'Rejected' ? 'rejected' : 'routed_to_review')}}"
+            },
+            {
+              "name": "details",
+              "value": "=Final ingestion status: {{$node['Call Matching Service'].json.validation_status}}"
+            },
+            {
+              "name": "previous_status",
+              "value": "None"
+            },
+            {
+              "name": "new_status",
+              "value": "={{$node['Call Matching Service'].json.validation_status}}"
+            }
+          ]
+        }
+      },
+      "id": "da2d9b78-4aa9-4836-8c1b-62ea94a6e0ea",
+      "name": "Prep Audit: Outcome",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [
+        2960,
+        450
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "oC8ETFMtyXEY4EJt",
+          "mode": "list",
+          "cachedResultName": "Invo Match - Log Audit Event Sub-workflow"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {}
+        },
+        "options": {}
+      },
+      "id": "d38896ff-ff92-4579-9dd1-aee75f824d22",
+      "name": "Log Audit: Outcome",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        3120,
+        450
+      ]
+    },
+    {
+      "parameters": {
+        "dataType": "string",
+        "value1": "{{$node['Call Matching Service'].json.validation_status}}",
+        "rules": {
+          "rules": [
+            {
+              "value2": "Ready for Payment",
+              "outputIndex": 0
+            },
+            {
+              "value2": "Procurement Review",
+              "outputIndex": 1
+            },
+            {
+              "value2": "Rejected",
+              "outputIndex": 2
+            }
+          ]
+        }
+      },
+      "id": "f22f399b-698a-4200-bb52-0ac656d2cb99",
+      "name": "Switch on validation_status",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1,
+      "position": [
+        3160,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{$env.SENDER_EMAIL || 'procurement-automation@example.com'}}",
+        "toEmail": "={{$env.RECIPIENT_EMAIL || 'accounting@example.com'}}",
+        "subject": "=Invoice Approved for Payment: {{$node['Call Matching Service'].json.invoice.invoice_number}}",
+        "html": "=<h3>Invoice Approved</h3><p>Invoice <strong>{{$node['Call Matching Service'].json.invoice.invoice_number}}</strong> from vendor <strong>{{$node['Call Matching Service'].json.invoice.vendor_name}}</strong> has passed all automated matching validation rules and is approved for payment.</p><p><strong>Gross Amount:</strong> {{$node['Call Matching Service'].json.invoice.currency}} {{$node['Call Matching Service'].json.invoice.gross_amount}}</p>"
+      },
+      "id": "d969ee66-b9fb-40cc-8e71-9a9f78cd1328",
+      "name": "Send Payment Approved Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 1,
+      "position": [
+        3380,
+        100
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 10000,
+      "credentials": {
+        "smtp": {
+          "id": "smtp_credentials_id",
+          "name": "SMTP Credentials"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{$env.SENDER_EMAIL || 'procurement-automation@example.com'}}",
+        "toEmail": "={{$env.PROCUREMENT_REVIEW_EMAIL || 'reviewer@example.com'}}",
+        "subject": "=Procurement Review Required: {{$node['Call Matching Service'].json.invoice.invoice_number}}",
+        "html": "=<h3>Review Required</h3><p>Invoice <strong>{{$node['Call Matching Service'].json.invoice.invoice_number}}</strong> from vendor <strong>{{$node['Call Matching Service'].json.invoice.vendor_name}}</strong> requires manual review.</p><p><strong>Discrepancies:</strong> {{$node['Call Matching Service'].json.validation.discrepancies.join(', ')}}</p><p>Please log in to NocoDB to review the discrepancies.</p>"
+      },
+      "id": "b4922be1-f1bd-48b5-9b67-23a752586071",
+      "name": "Send Review Needed Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 1,
+      "position": [
+        3380,
+        250
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 10000,
+      "credentials": {
+        "smtp": {
+          "id": "smtp_credentials_id",
+          "name": "SMTP Credentials"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{$env.SENDER_EMAIL || 'procurement-automation@example.com'}}",
+        "toEmail": "={{$env.RECIPIENT_EMAIL || 'accounting@example.com'}}",
+        "subject": "=Invoice Rejected: {{$node['Call Matching Service'].json.invoice.invoice_number}}",
+        "html": "=<h3>Invoice Rejected</h3><p>Invoice <strong>{{$node['Call Matching Service'].json.invoice.invoice_number}}</strong> from vendor <strong>{{$node['Call Matching Service'].json.invoice.vendor_name}}</strong> has been rejected by the automated matching engine.</p><p><strong>Reasons:</strong> {{$node['Call Matching Service'].json.validation.discrepancies.join(', ')}}</p>"
+      },
+      "id": "721daf3d-f826-4f9e-8a19-658d9380b893",
+      "name": "Send Rejected Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 1,
+      "position": [
+        3380,
+        400
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 10000,
+      "credentials": {
+        "smtp": {
+          "id": "smtp_credentials_id",
+          "name": "SMTP Credentials"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "low-text-condition",
+              "leftValue": "={{ ($json.text || '').trim().length }}",
+              "rightValue": 40,
+              "operator": {
+                "type": "number",
+                "operation": "lt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b3f437f1-4b21-4b5c-b00b-66f6bff47aed",
+      "name": "Check Extraction Quality",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        660,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Pull the ORIGINAL pdf binary (Extract PDF Text drops it), base64 encode for Gemini inline_data.\nconst buffer = await this.helpers.getBinaryDataBuffer(0, 'data');\nreturn [{\n  json: {\n    base64Pdf: buffer.toString('base64'),\n    ocr_fallback_triggered: true\n  }\n}];"
+      },
+      "id": "d04985af-37e2-48d3-9825-00e2da355b09",
+      "name": "Prepare OCR Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        210
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://generativelanguage.googleapis.com/v1beta/models/{{$env.GEMINI_MODEL || 'gemini-2.5-flash'}}:generateContent?key={{$env.GEMINI_API_KEY}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  \"contents\": [{\n    \"parts\": [\n      { \"text\": \"You are an invoice data extraction engine. This document could not be read as plain text (likely a scanned or image-based PDF), so you are receiving the raw PDF pages directly. Perform OCR on the document yourself and extract structured data. Return only valid JSON matching the schema. Do not include markdown, comments, or explanations.\\n\\nRequired Schema:\\n{\\n  \\\"vendor_name\\\": \\\"string or null\\\",\\n  \\\"vendor_id\\\": \\\"string or null\\\",\\n  \\\"purchase_order_number\\\": \\\"string or null\\\",\\n  \\\"invoice_number\\\": \\\"string or null\\\",\\n  \\\"invoice_date\\\": \\\"YYYY-MM-DD or null\\\",\\n  \\\"due_date\\\": \\\"YYYY-MM-DD or null\\\",\\n  \\\"currency\\\": \\\"ISO currency or null\\\",\\n  \\\"net_amount\\\": 0.0,\\n  \\\"tax_amount\\\": 0.0,\\n  \\\"gross_amount\\\": 0.0,\\n  \\\"line_items\\\": [\\n    {\\n      \\\"line_number\\\": 1,\\n      \\\"sku\\\": \\\"string or null\\\",\\n      \\\"description\\\": \\\"string or null\\\",\\n      \\\"quantity\\\": 0.0,\\n      \\\"unit_price\\\": 0.0,\\n      \\\"tax_rate\\\": 0.0,\\n      \\\"line_net_amount\\\": 0.0,\\n      \\\"line_tax_amount\\\": 0.0,\\n      \\\"line_gross_amount\\\": 0.0\\n    }\\n  ],\\n  \\\"confidence_score\\\": 0.0,\\n  \\\"extraction_warnings\\\": []\\n}\\n\\nBecause this document required OCR, cap confidence_score at 0.75 even on a clean read, and add \\\"ocr_fallback_used\\\" to extraction_warnings.\" },\n      { \"inline_data\": { \"mime_type\": \"application/pdf\", \"data\": $json.base64Pdf } }\n    ]\n  }],\n  \"generationConfig\": {\n    \"responseMimeType\": \"application/json\"\n  }\n} }}",
+        "options": {}
+      },
+      "id": "90193d2c-1af7-4d7a-919f-d99b2892b4d3",
+      "name": "Gemini OCR Fallback",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1100,
+        210
+      ]
+    }
+  ],
+  "connections": {
+    "Email Read (IMAP)": {
+      "main": [
+        [
+          {
+            "node": "Filter PDF Attachments",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter PDF Attachments": {
+      "main": [
+        [
+          {
+            "node": "Compute Attachment Hash",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compute Attachment Hash": {
+      "main": [
+        [
+          {
+            "node": "Write Binary PDF File",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Encode PDF as Base64",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Encode PDF as Base64": {
+      "main": [
+        [
+          {
+            "node": "Gemini AI Extraction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini AI Extraction": {
+      "main": [
+        [
+          {
+            "node": "Normalize Extracted JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Extracted JSON": {
+      "main": [
+        [
+          {
+            "node": "NocoDB Invoices Lookup",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Prep Audit: Extracted",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep Audit: Extracted": {
+      "main": [
+        [
+          {
+            "node": "Log Audit: Extracted",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "NocoDB Invoices Lookup": {
+      "main": [
+        [
+          {
+            "node": "NocoDB PO Lookup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "NocoDB PO Lookup": {
+      "main": [
+        [
+          {
+            "node": "NocoDB Vendor Lookup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "NocoDB Vendor Lookup": {
+      "main": [
+        [
+          {
+            "node": "NocoDB PO Line Items Lookup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "NocoDB PO Line Items Lookup": {
+      "main": [
+        [
+          {
+            "node": "Build PO Object",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Prep Audit: PO Lookup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep Audit: PO Lookup": {
+      "main": [
+        [
+          {
+            "node": "Log Audit: PO Lookup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build PO Object": {
+      "main": [
+        [
+          {
+            "node": "Call Matching Service",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Matching Service": {
+      "main": [
+        [
+          {
+            "node": "Store Invoice in NocoDB",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Prep Audit: Validation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep Audit: Validation": {
+      "main": [
+        [
+          {
+            "node": "Log Audit: Validation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Invoice in NocoDB": {
+      "main": [
+        [
+          {
+            "node": "Prepare Invoice Line Items",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Switch on validation_status",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Prep Audit: Outcome",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Invoice Line Items": {
+      "main": [
+        [
+          {
+            "node": "Store Invoice Line Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Invoice Line Items": {
+      "main": [
+        [
+          {
+            "node": "Prepare Validation Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Validation Results": {
+      "main": [
+        [
+          {
+            "node": "Store Validation Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Validation Results": {
+      "main": [
+        []
+      ]
+    },
+    "Prep Audit: Outcome": {
+      "main": [
+        [
+          {
+            "node": "Log Audit: Outcome",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch on validation_status": {
+      "main": [
+        [
+          {
+            "node": "Send Payment Approved Email",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Review Needed Email",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Rejected Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionTimeout": 300,
+    "errorWorkflow": "YOUR_ERROR_WORKFLOW_ID"
+  },
+  "active": false
+}

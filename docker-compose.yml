@@ -1,0 +1,128 @@
+version: '3.8'
+
+services:
+  postgres-n8n:
+    image: postgres:15-alpine
+    container_name: invo-match-postgres-n8n
+    environment:
+      POSTGRES_USER: ${POSTGRES_N8N_USER:-n8n}
+      POSTGRES_PASSWORD: ${POSTGRES_N8N_PASSWORD:-n8n_password}
+      POSTGRES_DB: ${POSTGRES_N8N_DB:-n8n}
+    volumes:
+      - n8n_postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432" # Map to non-standard port to avoid conflicts with local Postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_N8N_USER:-n8n} -d ${POSTGRES_N8N_DB:-n8n}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - invo-match-network
+
+  postgres-nocodb:
+    image: postgres:15-alpine
+    container_name: invo-match-postgres-nocodb
+    environment:
+      POSTGRES_USER: ${POSTGRES_NOCODB_USER:-nocodb}
+      POSTGRES_PASSWORD: ${POSTGRES_NOCODB_PASSWORD:-nocodb_password}
+      POSTGRES_DB: ${POSTGRES_NOCODB_DB:-nocodb}
+    volumes:
+      - nocodb_postgres_data:/var/lib/postgresql/data
+      - ./schema/database-schema.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5434:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_NOCODB_USER:-nocodb} -d ${POSTGRES_NOCODB_DB:-nocodb}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - invo-match-network
+
+  nocodb:
+    image: nocodb/nocodb:latest
+    container_name: invo-match-nocodb
+    depends_on:
+      postgres-nocodb:
+        condition: service_healthy
+    environment:
+      PORT: 8080
+      NC_ALLOW_LOCAL_EXTERNAL_DBS: "true"
+    volumes:
+      - nocodb_data:/usr/app/data
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:8080/api/v1/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - invo-match-network
+
+  n8n:
+    # PINNED (do not use ":latest"). n8n v2.0+ made Code-node/task-runner env access,
+    # executeWorkflow node params, and several other schemas incompatible with the
+    # workflow JSONs in this repo (typeVersion 1). Pin to the last 1.x line.
+    image: docker.n8n.io/n8nio/n8n:1.121.1
+    container_name: invo-match-n8n
+    depends_on:
+      postgres-n8n:
+        condition: service_healthy
+      nocodb:
+        condition: service_healthy
+      matching-service:
+        condition: service_started
+    env_file:
+      - .env
+    environment:
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=postgres-n8n
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=${POSTGRES_N8N_DB:-n8n}
+      - DB_POSTGRESDB_USER=${POSTGRES_N8N_USER:-n8n}
+      - DB_POSTGRESDB_PASSWORD=${POSTGRES_N8N_PASSWORD:-n8n_password}
+      - N8N_HOST=${N8N_HOST:-localhost}
+      - N8N_PORT=${N8N_PORT:-5678}
+      - N8N_PROTOCOL=${N8N_PROTOCOL:-http}
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY:-replace_with_long_random_string}
+      - GENERIC_TIMEZONE=${GENERIC_TIMEZONE:-Asia/Kolkata}
+      - TZ=${TZ:-Asia/Kolkata}
+      # Enable local file imports
+      - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=false
+      - N8N_RESTRICT_FILE_ACCESS_TO=/data
+      - N8N_BLOCK_ENV_ACCESS_IN_NODE=false
+      - NODE_FUNCTION_ALLOW_BUILTIN=crypto
+      - NOCODB_BASE_URL=http://nocodb:8080
+    volumes:
+      - n8n_data:/home/node/.n8n
+      # Mount workspace directory inside n8n container to read PDFs and CSV files
+      - .:/data
+    ports:
+      - "5678:5678"
+    networks:
+      - invo-match-network
+
+  matching-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.matching-service
+    container_name: invo-match-matching-service
+    environment:
+      - PORT=4000
+    ports:
+      - "4000:4000"
+    networks:
+      - invo-match-network
+
+networks:
+  invo-match-network:
+    name: invo-match-network
+
+volumes:
+  n8n_data:
+  n8n_postgres_data:
+  nocodb_data:
+  nocodb_postgres_data:

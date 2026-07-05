@@ -1,0 +1,13 @@
+invoice_file,po_number,scenario,expected_validation_status,expected_discrepancy_type,expected_severity,expected_duplicate_flag,expected_ocr_used
+INV-1001-perfect-match.pdf,PO-2026-1001,perfect match,Ready for Payment,none,info,false,false
+INV-1002-price-mismatch.pdf,PO-2026-1002,price mismatch within tolerance,Procurement Review,unit price mismatch,minor,false,false
+INV-1003-missing-po.pdf,PO-2026-9999,missing po,Rejected,missing purchase order,critical,false,false
+INV-1004-extra-line-item.pdf,PO-2026-1001,extra line item,Rejected,additional line item,major,false,false
+INV-1005-scanned-low-confidence.pdf,PO-2026-1003,scanned low confidence,Procurement Review,low confidence extraction,minor,false,true
+INV-1006-vendor-mismatch.pdf,PO-2026-1002,vendor mismatch,Rejected,vendor mismatch,major,false,false
+INV-1007-currency-mismatch.pdf,PO-2026-1003,currency mismatch,Rejected,currency mismatch,major,false,false
+INV-1008-duplicate-invoice.pdf,PO-2026-1001,duplicate invoice,Rejected,duplicate invoice,critical,true,false
+INV-1009-po-not-approved.pdf,PO-2026-1004,po not approved,Rejected,po not approved,critical,false,false
+INV-1010-missing-line-item.pdf,PO-2026-1005,missing line item,Rejected,missing line item,major,false,false
+INV-1011-tax-miscalculation.pdf,PO-2026-1006,tax miscalculation,Procurement Review,tax mismatch,minor,false,false
+INV-1012-total-exceeds-po.pdf,PO-2026-1003,total exceeds po,Rejected,total exceeds po,critical,false,false

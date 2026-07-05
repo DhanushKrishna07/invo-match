@@ -1,0 +1,4 @@
+vendor_id,vendor_name,vendor_aliases,email_domains,default_currency,active
+VEND-001,Acme Office Supplies Pvt Ltd,"[""Acme Office"",""Acme Supplies"",""Acme Office Supplies""]","[""acme.com"",""acmeoffice.in""]",INR,true
+VEND-002,Northwind Components,"[""Northwind"",""Northwind Comp""]","[""northwind.com""]",USD,true
+VEND-003,BluePeak Cloud Services,"[""BluePeak"",""BluePeak Cloud""]","[""bluepeak.co"",""bluepeak.com""]",INR,true

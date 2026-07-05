@@ -1,0 +1,61 @@
+{
+  "name": "Invo Match - Log Audit Event Sub-workflow",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "e304fa3a-23d4-4bb2-b5cd-265103c80fff",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [
+        100,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.NOCODB_BASE_URL}}/api/v2/tables/{{$env.NOCODB_AUDIT_LOG_TABLE_ID}}/records",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "xc-token",
+              "value": "={{$env.NOCODB_API_TOKEN}}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"entity_type\": \"{{$json.entity_type || 'Invoice'}}\",\n  \"entity_id\": \"{{String($json.entity_id)}}\",\n  \"action\": \"{{$json.action}}\",\n  \"actor\": \"{{$json.actor || 'System'}}\",\n  \"previous_status\": \"{{$json.previous_status || null}}\",\n  \"new_status\": \"{{$json.new_status || null}}\",\n  \"details_json\": \"{{typeof $json.details === 'object' ? JSON.stringify($json.details) : ($json.details || null)}}\"\n}",
+        "options": {}
+      },
+      "id": "f8a93e3d-fa3e-4d43-bb9e-1d54eb5e6ecd",
+      "name": "Store Audit Log",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        320,
+        300
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    }
+  ],
+  "connections": {
+    "Execute Workflow Trigger": {
+      "main": [
+        [
+          {
+            "node": "Store Audit Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {},
+  "active": false
+}

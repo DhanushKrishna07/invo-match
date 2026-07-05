@@ -1,0 +1,98 @@
+{
+  "name": "Invo Match - Error Handler Sub-workflow",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "e304fa3a-23d4-4bb2-b5cd-265103c80ffd",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        100,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.NOCODB_BASE_URL}}/api/v2/tables/{{$env.NOCODB_AUDIT_LOG_TABLE_ID}}/records",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "xc-token",
+              "value": "={{$env.NOCODB_API_TOKEN}}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"entity_type\": \"Invoice\",\n  \"entity_id\": \"{{$json.execution.id || 'Unknown'}}\",\n  \"action\": \"error_occurred\",\n  \"actor\": \"System\",\n  \"details_json\": \"{\\\"workflow\\\": \\\"{{$json.workflow.name}}\\\", \\\"node\\\": \\\"{{$json.node.name}}\\\", \\\"message\\\": \\\"{{$json.error.message}}\\\"}\"\n}",
+        "options": {}
+      },
+      "id": "f8a93e3d-fa3e-4d43-bb9e-1d54eb5e6ecd",
+      "name": "Log Error Audit",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        320,
+        300
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{$env.SENDER_EMAIL || 'procurement-automation@example.com'}}",
+        "toEmail": "={{$env.PROCUREMENT_REVIEW_EMAIL || 'reviewer@example.com'}}",
+        "subject": "=Procurement Automation Error - {{$json.workflow.name}}",
+        "html": "=<p>An error occurred during workflow execution.</p><p><strong>Workflow:</strong> {{$json.workflow.name}}<br/><strong>Node:</strong> {{$json.node.name}}<br/><strong>Error:</strong> {{$json.error.message}}</p><p>Check the n8n execution log and audit tables for more details.</p>",
+        "options": {}
+      },
+      "id": "a9b83e3d-d4e5-4f3e-8f9d-1c34eb5e5ecd",
+      "name": "Send Error Email Alert",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 1,
+      "position": [
+        540,
+        300
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 10000,
+      "credentials": {
+        "smtp": {
+          "id": "smtp_credentials_id",
+          "name": "SMTP Credentials"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Log Error Audit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Error Audit": {
+      "main": [
+        [
+          {
+            "node": "Send Error Email Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {},
+  "active": false
+}

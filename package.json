@@ -1,0 +1,31 @@
+{
+  "name": "invo-match",
+  "version": "1.0.0",
+  "description": "AI Purchase Order (PO) Matching and Invoice Validation workflow",
+  "main": "src/matching.js",
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/normalize.test.js tests/matching.test.js",
+    "test:integration": "node tests/integration.test.js",
+    "generate-pdfs": "node data/generate_pdfs.js",
+    "setup-db": "node src/setup_nocodb.js",
+    "wire-workflows": "node scripts/wire-workflows.js"
+  },
+  "keywords": [
+    "invoice",
+    "po-matching",
+    "procurement",
+    "n8n",
+    "nocodb",
+    "gemini"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^4.19.2",
+    "pdfkit": "^0.15.0"
+  },
+  "devDependencies": {
+    "dotenv": "^16.4.5"
+  }
+}
