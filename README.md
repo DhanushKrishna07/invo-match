@@ -1,6 +1,6 @@
-# 🧾 Invo Match — AI-Powered Invoice Matching & Validation System
+# 🧾 InvoMatch — AI-Powered Invoice Matching & Validation System
 
-**Invo Match** is a production-grade **Accounts Payable automation platform** built entirely on a self-hosted, free-tier stack. It ingests vendor invoices via email or manual upload, extracts structured data using **Google Gemini AI**, matches them against Purchase Orders (POs) in **NocoDB**, enforces 12+ business validation rules through a **Node.js matching engine**, and routes outcomes to one of three states: ✅ Ready for Payment | 🔍 Procurement Review | ❌ Rejected — complete with email notifications and a full audit trail.
+**InvoMatch** is a production-grade **Accounts Payable automation platform** built entirely on a self-hosted, free-tier stack. It ingests vendor invoices via email or manual upload, extracts structured data using **Google Gemini AI**, matches them against Purchase Orders (POs) in **NocoDB**, enforces 12+ business validation rules through a **Node.js matching engine**, and routes outcomes to one of three states: ✅ Ready for Payment | 🔍 Procurement Review | ❌ Rejected — complete with email notifications and a full audit trail.
 
 <p align="center">
   <img src="https://img.shields.io/badge/n8n-Workflow_Automation-EA4B71?style=for-the-badge&logo=n8n&logoColor=white"/>
@@ -253,21 +253,21 @@ Full audit trail showing the 3 system-logged events for INV-1001: `invoice_extra
 
 ### Business Rules Applied by the Matching Engine
 
-| Rule | Severity | Outcome if Failed |
-|------|----------|-------------------|
-| Missing PO Number | Critical | Rejected |
-| Duplicate Invoice (hash or number) | Critical | Rejected |
-| PO Approval Status ≠ Approved | Critical | Rejected |
-| Invoice Total Exceeds PO Amount (+ tolerance) | Critical | Rejected |
-| Vendor Name Mismatch | Major | Rejected |
-| Currency Mismatch | Major | Rejected |
-| Extra / Missing Line Items | Major | Rejected |
-| Price Mismatch (within tolerance) | Minor | Procurement Review |
-| Tax Miscalculation | Minor | Procurement Review |
-| Low Confidence Extraction Score | Minor | Procurement Review |
-| Multiple POs Found for Same PO Number | Minor | Procurement Review |
-| Tax Inconsistent with Line Items | Minor | Procurement Review |
-| All Checks Pass | — | ✅ Ready for Payment |
+| Rule                                          | Severity | Outcome if Failed   |
+|-----------------------------------------------|----------|---------------------|
+| Missing PO Number                             | Critical | Rejected            |
+| Duplicate Invoice (hash or number)            | Critical | Rejected            |
+| PO Approval Status ≠ Approved                 | Critical | Rejected            |
+| Invoice Total Exceeds PO Amount (+ tolerance) | Critical | Rejected            |
+| Vendor Name Mismatch                          | Major    | Rejected            |
+| Currency Mismatch                             | Major    | Rejected            |
+| Extra / Missing Line Items                    | Major    | Rejected            |
+| Price Mismatch (within tolerance)             | Minor    | Procurement Review  |
+| Tax Miscalculation                            | Minor    | Procurement Review  |
+| Low Confidence Extraction Score               | Minor    | Procurement Review  |
+| Multiple POs Found for Same PO Number         | Minor    | Procurement Review  |
+| Tax Inconsistent with Line Items              | Minor    | Procurement Review  |
+| All Checks Pass                               | —        | Ready for Payment   |
 
 ### Test Coverage
 
