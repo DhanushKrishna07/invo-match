@@ -100,9 +100,9 @@
            │
 ┌──────────▼──────────────────────────────────────────────────────────┐
 │                       Routing & Notifications                       │
-│  ✅ Ready for Payment → Accounting Email                             │
-│  🔍 Procurement Review → Reviewer Email + Override Polling          │
-│  ❌ Rejected → Rejection Email with Reasons                          │
+│     Ready for Payment → Accounting Email                            │
+│     Procurement Review → Reviewer Email + Override Polling          │
+│     Rejected → Rejection Email with Reasons                         │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -132,7 +132,7 @@
                                       └──────────┬──────────┘
                                                  │ Validation
 ┌─────────────────────────────────────────────────▼──────────────────┐
-│  Store Invoice · Store Line Items · Store Validation Results        │
+│  Store Invoice · Store Line Items · Store Validation Results       │
 └──────────────────────────────────┬─────────────────────────────────┘
                                    │
                ┌───────────────────┼──────────────────────┐
@@ -241,9 +241,11 @@ Full audit trail showing the 3 system-logged events for INV-1001: `invoice_extra
 
 ## 🎥 Demo Video
 
-📺 Click below to **watch/download the full Invo Match walk-through**:
+📺 Click below to **watch the full Invo Match walk-through in your browser** (no download needed):
 
-➡️ [View Full Demo Video](assets/demo/InvoMatch_demo.mp4)
+[![Watch Demo](https://img.shields.io/badge/▶_Watch_Demo-Google_Drive-4285F4?style=for-the-badge&logo=googledrive&logoColor=white)](https://drive.google.com/file/d/1gcH-vxcpC0lGvGBXTmK1ajclwjJGYhcL/view?usp=drive_link)
+
+➡️ **Direct Link:** https://drive.google.com/file/d/1gcH-vxcpC0lGvGBXTmK1ajclwjJGYhcL/view?usp=drive_link
 
 ---
 
@@ -293,8 +295,8 @@ npm test
 
 1. **Clone the Repository:**
    ```bash
-   git clone <your-repo-url>
-   cd Invo_Match
+   git clone https://github.com/DhanushKrishna07/invo-match.git
+   cd invo-match
    ```
 
 2. **Configure Environment:**
