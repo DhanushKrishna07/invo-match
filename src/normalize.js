@@ -109,6 +109,8 @@ export function normalizeInvoice(aiJson) {
     gross_amount: normalizeAmount(aiJson.gross_amount),
     line_items: lineItems.map(normalizeLineItem),
     confidence_score: parseFloat(aiJson.confidence_score) || 0.00,
+    ocr_used: aiJson.ocr_used === true || aiJson.ocr_used === 'true' || false,
+    low_confidence_reason: aiJson.low_confidence_reason || null,
     extraction_warnings: Array.isArray(aiJson.extraction_warnings) ? aiJson.extraction_warnings : []
   };
 }

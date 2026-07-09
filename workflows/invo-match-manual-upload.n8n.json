@@ -74,7 +74,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ {\n  \"contents\": [{\n    \"parts\": [\n      { \"text\": \"You are an invoice data extraction engine. Extract all structured data from this invoice PDF and return only valid JSON matching the schema exactly. Do not include markdown, code fences, comments, or explanations. Return the raw JSON only.\\n\\nRequired Schema:\\n{\\n  \\\"vendor_name\\\": \\\"string or null\\\",\\n  \\\"vendor_id\\\": \\\"string or null\\\",\\n  \\\"purchase_order_number\\\": \\\"string or null\\\",\\n  \\\"invoice_number\\\": \\\"string or null\\\",\\n  \\\"invoice_date\\\": \\\"YYYY-MM-DD or null\\\",\\n  \\\"due_date\\\": \\\"YYYY-MM-DD or null\\\",\\n  \\\"currency\\\": \\\"INR, USD, EUR or null\\\",\\n  \\\"net_amount\\\": 0.0,\\n  \\\"tax_amount\\\": 0.0,\\n  \\\"gross_amount\\\": 0.0,\\n  \\\"line_items\\\": [\\n    {\\n      \\\"line_number\\\": 1,\\n      \\\"sku\\\": \\\"string or null\\\",\\n      \\\"description\\\": \\\"string\\\",\\n      \\\"quantity\\\": 0.0,\\n      \\\"unit_price\\\": 0.0,\\n      \\\"tax_rate\\\": 0.0,\\n      \\\"line_net_amount\\\": 0.0,\\n      \\\"line_tax_amount\\\": 0.0,\\n      \\\"line_gross_amount\\\": 0.0\\n    }\\n  ],\\n  \\\"confidence_score\\\": 0.95,\\n  \\\"extraction_warnings\\\": []\\n}\" },\n      { \"inline_data\": { \"mime_type\": \"application/pdf\", \"data\": $json.base64Pdf } }\n    ]\n  }],\n  \"generationConfig\": {\n    \"responseMimeType\": \"application/json\"\n  }\n} }}",
+        "jsonBody": "={{ {\n  \"contents\": [{\n    \"parts\": [\n      { \"text\": \"You are an invoice data extraction engine. Extract all structured data from this invoice PDF and return only valid JSON matching the schema exactly. Do not include markdown, code fences, comments, or explanations. Return the raw JSON only.\\n\\nEvaluate the visual clarity and legibility of the document. If it is a scanned image, photocopy, photo, or has low-resolution, blurred, or distorted text, set \\\"ocr_used\\\" to true and cap \\\"confidence_score\\\" at 0.75 (explaining why in \\\"low_confidence_reason\\\"). Otherwise, set \\\"ocr_used\\\" to false and \\\"low_confidence_reason\\\" to null.\\n\\nRequired Schema:\\n{\\n  \\\"vendor_name\\\": \\\"string or null\\\",\\n  \\\"vendor_id\\\": \\\"string or null\\\",\\n  \\\"purchase_order_number\\\": \\\"string or null\\\",\\n  \\\"invoice_number\\\": \\\"string or null\\\",\\n  \\\"invoice_date\\\": \\\"YYYY-MM-DD or null\\\",\\n  \\\"due_date\\\": \\\"YYYY-MM-DD or null\\\",\\n  \\\"currency\\\": \\\"INR, USD, EUR or null\\\",\\n  \\\"net_amount\\\": 0.0,\\n  \\\"tax_amount\\\": 0.0,\\n  \\\"gross_amount\\\": 0.0,\\n  \\\"line_items\\\": [\\n    {\\n      \\\"line_number\\\": 1,\\n      \\\"sku\\\": \\\"string or null\\\",\\n      \\\"description\\\": \\\"string\\\",\\n      \\\"quantity\\\": 0.0,\\n      \\\"unit_price\\\": 0.0,\\n      \\\"tax_rate\\\": 0.0,\\n      \\\"line_net_amount\\\": 0.0,\\n      \\\"line_tax_amount\\\": 0.0,\\n      \\\"line_gross_amount\\\": 0.0\\n    }\\n  ],\\n  \\\"confidence_score\\\": 0.95,\\n  \\\"ocr_used\\\": false,\\n  \\\"low_confidence_reason\\\": \\\"string or null\\\",\\n  \\\"extraction_warnings\\\": []\\n}\" },\n      { \"inline_data\": { \"mime_type\": \"application/pdf\", \"data\": $json.base64Pdf } }\n    ]\n  }],\n  \"generationConfig\": {\n    \"responseMimeType\": \"application/json\"\n  }\n} }}",
         "options": {}
       },
       "id": "c9d83e3d-f6a7-4f5e-bf8d-1e56eb5e7ecc",
@@ -91,7 +91,7 @@
     },
     {
       "parameters": {
-        "jsCode": "/* Normalization & Matching Node Code */\n// 1. Normalization Helpers\nfunction normalizeVendorName(name) {\n  if (!name) return \"\";\n  return name.toLowerCase().replace(/[.,\\/#!$%\\^&\\*;:{}=\\-_`~()]/g, \"\").replace(/\\b(pvt ltd|private limited|ltd|limited|llc|inc|corp|corporation|gmbh|co)\\b/g, \"\").replace(/\\s+/g, \" \").trim();\n}\n\nfunction normalizeCurrency(currency) {\n  if (!currency) return null;\n  const cleaned = currency.trim().toUpperCase();\n  if (cleaned === \"$\" || cleaned === \"USD\") return \"USD\";\n  if (cleaned === \"₹\" || cleaned === \"INR\" || cleaned === \"RS\") return \"INR\";\n  if (cleaned === \"€\" || cleaned === \"EUR\") return \"EUR\";\n  return cleaned;\n}\n\nfunction normalizeAmount(value) {\n  if (value === null || value === undefined) return 0.00;\n  if (typeof value === \"string\") {\n    const cleaned = value.replace(/[^\\d.-]/g, \"\");\n    const parsed = parseFloat(cleaned);\n    return isNaN(parsed) ? 0.00 : Math.round(parsed * 100) / 100;\n  }\n  return typeof value === \"number\" ? Math.round(value * 100) / 100 : 0.00;\n}\n\nfunction normalizeQuantity(value) {\n  if (value === null || value === undefined) return 0;\n  if (typeof value === \"string\") {\n    const cleaned = value.replace(/[^\\d.-]/g, \"\");\n    const parsed = parseFloat(cleaned);\n    return isNaN(parsed) ? 0 : parsed;\n  }\n  return typeof value === \"number\" ? value : 0;\n}\n\nfunction normalizeDate(value) {\n  if (!value) return null;\n  const str = String(value).trim();\n  const match = str.match(/^(\\d{4})[-/](\\d{1,2})[-/](\\d{1,2})/);\n  if (match) return `${match[1]}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')}`;\n  try {\n    const d = new Date(str);\n    if (isNaN(d.getTime())) return null;\n    if (str.includes(\"Z\") || str.includes(\"T\")) {\n      return d.toISOString().split(\"T\")[0];\n    } else {\n      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;\n    }\n  } catch {\n    return null;\n  }\n}\n\n// 2. Parse AI response - Gemini now always gets the PDF directly as base64\nlet geminiRaw;\ntry {\n  geminiRaw = $node[\"Gemini AI Extraction\"].json.candidates[0].content.parts[0].text;\n} catch (e) {\n  throw new Error('Gemini AI Extraction failed: ' + e.message);\n}\nconst parsed = JSON.parse(geminiRaw.replace(/```json\\n?|```/g, \"\").trim());\n\n// Normalize Extracted\nconst extracted = {\n  vendor_name: parsed.vendor_name ? parsed.vendor_name.trim() : null,\n  vendor_id: parsed.vendor_id ? parsed.vendor_id.trim() : null,\n  purchase_order_number: parsed.purchase_order_number ? parsed.purchase_order_number.trim() : null,\n  invoice_number: parsed.invoice_number ? parsed.invoice_number.trim() : null,\n  invoice_date: normalizeDate(parsed.invoice_date),\n  due_date: normalizeDate(parsed.due_date),\n  currency: normalizeCurrency(parsed.currency),\n  net_amount: normalizeAmount(parsed.net_amount),\n  tax_amount: normalizeAmount(parsed.tax_amount),\n  gross_amount: normalizeAmount(parsed.gross_amount),\n  confidence_score: parseFloat(parsed.confidence_score) || 0.00,\n  extraction_warnings: Array.isArray(parsed.extraction_warnings) ? parsed.extraction_warnings : [],\n  ocr_used: false,\n  low_confidence_reason: null,\n  line_items: (parsed.line_items || []).map(l => ({\n    line_number: parseInt(l.line_number) || 0,\n    sku: l.sku ? l.sku.trim() : null,\n    description: l.description ? l.description.trim() : \"\",\n    quantity: normalizeQuantity(l.quantity),\n    unit_price: normalizeAmount(l.unit_price),\n    tax_rate: normalizeQuantity(l.tax_rate),\n    line_net_amount: normalizeAmount(l.line_net_amount),\n    line_tax_amount: normalizeAmount(l.line_tax_amount),\n    line_gross_amount: normalizeAmount(l.line_gross_amount)\n  }))\n};\n\nreturn {\n  extracted\n};"
+        "jsCode": "/* Normalization & Matching Node Code */\n// 1. Normalization Helpers\nfunction normalizeVendorName(name) {\n  if (!name) return \"\";\n  return name.toLowerCase().replace(/[.,\\/#!$%\\^&\\*;:{}=\\-_`~()]/g, \"\").replace(/\\b(pvt ltd|private limited|ltd|limited|llc|inc|corp|corporation|gmbh|co)\\b/g, \"\").replace(/\\s+/g, \" \").trim();\n}\n\nfunction normalizeCurrency(currency) {\n  if (!currency) return null;\n  const cleaned = currency.trim().toUpperCase();\n  if (cleaned === \"$\" || cleaned === \"USD\") return \"USD\";\n  if (cleaned === \"₹\" || cleaned === \"INR\" || cleaned === \"RS\") return \"INR\";\n  if (cleaned === \"€\" || cleaned === \"EUR\") return \"EUR\";\n  return cleaned;\n}\n\nfunction normalizeAmount(value) {\n  if (value === null || value === undefined) return 0.00;\n  if (typeof value === \"string\") {\n    const cleaned = value.replace(/[^\\d.-]/g, \"\");\n    const parsed = parseFloat(cleaned);\n    return isNaN(parsed) ? 0.00 : Math.round(parsed * 100) / 100;\n  }\n  return typeof value === \"number\" ? Math.round(value * 100) / 100 : 0.00;\n}\n\nfunction normalizeQuantity(value) {\n  if (value === null || value === undefined) return 0;\n  if (typeof value === \"string\") {\n    const cleaned = value.replace(/[^\\d.-]/g, \"\");\n    const parsed = parseFloat(cleaned);\n    return isNaN(parsed) ? 0 : parsed;\n  }\n  return typeof value === \"number\" ? value : 0;\n}\n\nfunction normalizeDate(value) {\n  if (!value) return null;\n  const str = String(value).trim();\n  const match = str.match(/^(\\d{4})[-/](\\d{1,2})[-/](\\d{1,2})/);\n  if (match) return `${match[1]}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')}`;\n  try {\n    const d = new Date(str);\n    if (isNaN(d.getTime())) return null;\n    if (str.includes(\"Z\") || str.includes(\"T\")) {\n      return d.toISOString().split(\"T\")[0];\n    } else {\n      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;\n    }\n  } catch {\n    return null;\n  }\n}\n\n// 2. Parse AI response - Gemini now always gets the PDF directly as base64\nlet geminiRaw;\ntry {\n  geminiRaw = $node[\"Gemini AI Extraction\"].json.candidates[0].content.parts[0].text;\n} catch (e) {\n  throw new Error('Gemini AI Extraction failed: ' + e.message);\n}\nconst parsed = JSON.parse(geminiRaw.replace(/```json\\n?|```/g, \"\").trim());\n\n// Normalize Extracted\nconst extracted = {\n  vendor_name: parsed.vendor_name ? parsed.vendor_name.trim() : null,\n  vendor_id: parsed.vendor_id ? parsed.vendor_id.trim() : null,\n  purchase_order_number: parsed.purchase_order_number ? parsed.purchase_order_number.trim() : null,\n  invoice_number: parsed.invoice_number ? parsed.invoice_number.trim() : null,\n  invoice_date: normalizeDate(parsed.invoice_date),\n  due_date: normalizeDate(parsed.due_date),\n  currency: normalizeCurrency(parsed.currency),\n  net_amount: normalizeAmount(parsed.net_amount),\n  tax_amount: normalizeAmount(parsed.tax_amount),\n  gross_amount: normalizeAmount(parsed.gross_amount),\n  confidence_score: parseFloat(parsed.confidence_score) || 0.00,\n  extraction_warnings: Array.isArray(parsed.extraction_warnings) ? parsed.extraction_warnings : [],\n  ocr_used: parsed.ocr_used === true || parsed.ocr_used === 'true' || false,\n  low_confidence_reason: parsed.low_confidence_reason || null,\n  missing_critical_fields: (() => {\n    const missing = [];\n    if (!parsed.invoice_number) missing.push('invoice_number');\n    if (!parsed.invoice_date) missing.push('invoice_date');\n    if (!parsed.vendor_name) missing.push('vendor_name');\n    if (!parsed.gross_amount) missing.push('gross_amount');\n    return missing.length > 0 ? missing.join(', ') : '';\n  })(),\n  line_items: (parsed.line_items || []).map(l => ({\n    line_number: parseInt(l.line_number) || 0,\n    sku: l.sku ? l.sku.trim() : null,\n    description: l.description ? l.description.trim() : \"\",\n    quantity: normalizeQuantity(l.quantity),\n    unit_price: normalizeAmount(l.unit_price),\n    tax_rate: normalizeQuantity(l.tax_rate),\n    line_net_amount: normalizeAmount(l.line_net_amount),\n    line_tax_amount: normalizeAmount(l.line_tax_amount),\n    line_gross_amount: normalizeAmount(l.line_gross_amount)\n  }))\n};\n\nreturn {\n  extracted\n};"
       },
       "id": "6fc4d918-89c0-7f71-e9f9-e374d6c4d86a",
       "name": "Normalize Extracted JSON",
@@ -417,7 +417,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ vendor_name: $node['Call Matching Service'].json.invoice.vendor_name, vendor_id: $node['Call Matching Service'].json.invoice.vendor_id, purchase_order_number: $node['Call Matching Service'].json.invoice.purchase_order_number, purchase_order_match: $node['Call Matching Service'].json.purchase_order_match, invoice_number: $node['Call Matching Service'].json.invoice.invoice_number, invoice_date: $node['Call Matching Service'].json.invoice.invoice_date, due_date: $node['Call Matching Service'].json.invoice.due_date, currency: $node['Call Matching Service'].json.invoice.currency, net_amount: $node['Call Matching Service'].json.invoice.net_amount, tax_amount: $node['Call Matching Service'].json.invoice.tax_amount, gross_amount: $node['Call Matching Service'].json.invoice.gross_amount, validation_status: $node['Call Matching Service'].json.validation.status, discrepancy_summary: ($node['Call Matching Service'].json.validation.discrepancies || []).join(', '), override_decision: 'None', attachment_hash: $node['Compute Attachment Hash'].json.attachmentHash, invoice_attachment: '/data/invoices/' + $node['Compute Attachment Hash'].json.attachmentHash + '.pdf', sender_name: $node['Set Demo Metadata'].json.sender_name || 'Demo Reviewer', sender_email: $node['Set Demo Metadata'].json.sender_email || 'reviewer@example.com', email_subject: $node['Set Demo Metadata'].json.email_subject || 'Manual upload check', received_at: $node['Set Demo Metadata'].json.received_at || new Date().toISOString(), confidence_score: $node['Call Matching Service'].json.invoice.confidence_score || 0, extraction_warnings: JSON.stringify($node['Call Matching Service'].json.invoice.extraction_warnings || []), ocr_used: $node['Call Matching Service'].json.invoice.ocr_used || false, low_confidence_reason: $node['Call Matching Service'].json.invoice.low_confidence_reason || '', duplicate_flag: $node['Call Matching Service'].json.duplicate_flag || false, duplicate_type: $node['Call Matching Service'].json.duplicate_type || '' }) }}"
+        "jsonBody": "={{ JSON.stringify({ vendor_name: $node['Call Matching Service'].json.invoice.vendor_name, vendor_id: $node['Call Matching Service'].json.invoice.vendor_id || ($node['Call Matching Service'].json.po ? $node['Call Matching Service'].json.po.vendor_id : null), purchase_order_number: $node['Call Matching Service'].json.invoice.purchase_order_number, purchase_order_match: $node['Call Matching Service'].json.purchase_order_match, invoice_number: $node['Call Matching Service'].json.invoice.invoice_number, invoice_date: $node['Call Matching Service'].json.invoice.invoice_date, due_date: $node['Call Matching Service'].json.invoice.due_date, currency: $node['Call Matching Service'].json.invoice.currency, net_amount: $node['Call Matching Service'].json.invoice.net_amount, tax_amount: $node['Call Matching Service'].json.invoice.tax_amount, gross_amount: $node['Call Matching Service'].json.invoice.gross_amount, validation_status: $node['Call Matching Service'].json.validation.status, discrepancy_summary: ($node['Call Matching Service'].json.validation.discrepancies || []).join(', '), override_decision: 'None', attachment_hash: $node['Compute Attachment Hash'].json.attachmentHash, invoice_attachment: '/data/invoices/' + $node['Compute Attachment Hash'].json.attachmentHash + '.pdf', sender_name: $json.body?.sender_name || $json.sender_name || null, sender_email: $json.body?.sender_email || $json.sender_email || null, email_subject: $json.body?.email_subject || $json.email_subject || $node['Set Demo Metadata'].json.email_subject || 'Manual upload check', received_at: $node['Set Demo Metadata'].json.received_at || new Date().toISOString(), confidence_score: $node['Call Matching Service'].json.invoice.confidence_score || 0, extraction_warnings: JSON.stringify($node['Call Matching Service'].json.invoice.extraction_warnings || []), ocr_used: $node['Call Matching Service'].json.invoice.ocr_used || false, low_confidence_reason: $node['Call Matching Service'].json.invoice.low_confidence_reason || '', duplicate_flag: $node['Call Matching Service'].json.duplicate_flag || false, duplicate_type: $node['Call Matching Service'].json.duplicate_type || '', line_items_raw: JSON.stringify($node['Call Matching Service'].json.invoice.line_items || []), validation_results_json: JSON.stringify($node['Call Matching Service'].json.validation.results || []), missing_critical_fields: $node['Call Matching Service'].json.invoice.missing_critical_fields || '' }) }}"
       },
       "id": "6dd5a0a6-b436-437f-86d0-d660743b2357",
       "name": "Store Invoice in NocoDB",
@@ -669,29 +669,82 @@
     },
     {
       "parameters": {
-        "dataType": "string",
-        "value1": "{{$node['Call Matching Service'].json.validation_status}}",
         "rules": {
-          "rules": [
+          "values": [
             {
-              "value2": "Ready for Payment",
-              "outputIndex": 0
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $('Call Matching Service').first().json.validation_status }}",
+                    "rightValue": "Ready for Payment",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Ready for Payment"
             },
             {
-              "value2": "Procurement Review",
-              "outputIndex": 1
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $('Call Matching Service').first().json.validation_status }}",
+                    "rightValue": "Procurement Review",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Procurement Review"
             },
             {
-              "value2": "Rejected",
-              "outputIndex": 2
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $('Call Matching Service').first().json.validation_status }}",
+                    "rightValue": "Rejected",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Rejected"
             }
           ]
-        }
+        },
+        "options": {}
       },
       "id": "ad8606d0-9df9-4cd9-b611-5154ec478412",
       "name": "Switch on validation_status",
       "type": "n8n-nodes-base.switch",
-      "typeVersion": 1,
+      "typeVersion": 3,
       "position": [
         3160,
         200

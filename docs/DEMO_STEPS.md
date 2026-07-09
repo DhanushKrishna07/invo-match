@@ -84,6 +84,39 @@ Invoke-WebRequest -Uri "http://localhost:5678/webhook/invo-match-upload" `
 ```
 * **Expected Result:** The system flags the invoice as `Rejected`. In NocoDB under the **Rejected** view, you will find `INV-1003` with a discrepancy description of `missing purchase order`.
 
+### Option B: Email Ingestion
+
+The system polls the configured email address periodically (defined by `IMAP_USER` in `.env`) to ingest invoices sent as PDF attachments.
+
+#### Steps to Run Email Ingestion Test:
+
+1. **Verify Email Setup:**
+   Ensure the recipient inbox is configured in `.env` (by default, `dhanushaisolutions@gmail.com`). Make sure n8n has been successfully wired and the workflows are active.
+
+2. **Draft and Send Email:**
+   Compose an email using the following template:
+   * **To:** `dhanushaisolutions@gmail.com`
+   * **Subject:** `Invoice Submission - INV-1011`
+   * **Body:**
+     ```text
+     Hello Accounts Payable,
+
+     Please find the attached invoice INV-1011 for PO-2026-1006.
+
+     Regards,
+     Supplier Billing Department
+     ```
+   * **Attachment:** Attach the PDF file **`INV-1011-tax-miscalculation.pdf`** located at `data/sample_invoices/INV-1011-tax-miscalculation.pdf`.
+
+3. **Check Pipeline Executions:**
+   * Open the n8n dashboard (`http://localhost:5678`).
+   * The IMAP workflow polls the inbox every minute. Once the email is picked up, it starts the ingestion pipeline.
+   * You can check the execution history in the **Invo Match - Main** workflow dashboard.
+
+4. **Verify Expected Outcome:**
+   * Go to NocoDB and check the **Needs Review** view under `invoices`.
+   * **Validation Result:** Since `INV-1011` contains a tax miscalculation (the line items do not sum to total tax amount), the matching engine flags it and routes it to `Procurement Review` with detailed discrepancy information in the `validation_results` table.
+
 ---
 
 ## 🔍 4. Inspecting Validation Results & Audit Logs
@@ -150,3 +183,28 @@ The system includes 12 sample invoices designed to test various matching engine 
 | `INV-1010-missing-line-item.pdf` | `PO-2026-1005` | `Rejected` | Expected line item from PO is missing from invoice. |
 | `INV-1011-tax-miscalculation.pdf` | `PO-2026-1006` | `Procurement Review` | Line items do not sum to total tax amount. |
 | `INV-1012-total-exceeds-po.pdf` | `PO-2026-1003` | `Rejected` | Gross amount exceeds PO limit. |
+
+---
+
+## 🛠️ 8. Troubleshooting & Updating API Keys
+
+If you encounter **Gemini AI Extraction** issues (e.g., rate limits, invalid key errors, or failure to extract structured JSON):
+
+### 1. Update the API Key
+Open the `.env` file in the root of the project and update the `GEMINI_API_KEY` field:
+```ini
+GEMINI_API_KEY=your_new_api_key_here
+```
+
+### 2. Reload Docker Containers
+Reload the Docker services to apply the new environment variables:
+```bash
+docker compose up -d
+```
+
+### 3. Sync Configurations to n8n
+Run the provisioning script to sync and wire the new environment variables into the n8n active workflows:
+```bash
+docker exec -w /data invo-match-n8n node /data/scripts/wire-workflows.js
+```
+All ingestion pipelines will now be updated and fully functional with your new Gemini API key!

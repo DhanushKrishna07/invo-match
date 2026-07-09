@@ -44,7 +44,7 @@
 ### 🤖 AI-Powered PDF Data Extraction (Gemini 2.5 Flash)
 - Converts invoices directly to base64 and submits them to **Google Gemini 2.5 Flash** as inline multimodal data — no intermediate file parsing needed.
 - Extracts: vendor name, vendor ID, PO number, invoice number, dates, currency, net/tax/gross amounts, and line items (SKU, quantity, unit price, tax rate).
-- **OCR Fallback:** If text extraction quality is poor (< 40 characters), the pipeline automatically re-triggers a dedicated OCR-aware Gemini prompt, caps confidence at 0.75, and appends `ocr_fallback_used` to extraction warnings.
+- **OCR & Quality Detection:** The pipeline sends base64 PDF data directly to Gemini, which natively performs OCR on scanned documents. The extraction prompt instructs Gemini to automatically detect if a document is a scanned image, photocopy, or low-quality, flag `ocr_used` as `true`, and cap its confidence score at `0.75` to automatically route it to procurement review.
 
 ### 🔗 Intelligent PO Matching Engine (Node.js/Docker)
 - A dedicated Express microservice (`http://matching-service:4000/match`) applies 12+ configurable business rules in sequence.
@@ -143,7 +143,7 @@
 ```
 
 1. **Invoice Arrival:** Email IMAP or webhook receives the PDF. A SHA-256 hash is computed and the file is written to the invoices volume.
-2. **AI Extraction:** The PDF is base64-encoded and sent to Gemini 2.5 Flash. An OCR fallback is triggered if text quality is insufficient.
+2. **AI Extraction:** The PDF is base64-encoded and sent to Gemini 2.5 Flash, which natively reads vector or scanned PDF data and dynamically flags if OCR was required.
 3. **Normalization:** Extracted JSON is normalized (dates, currencies, amounts, vendor names) to a canonical schema.
 4. **PO & Vendor Lookup:** The PO number is used to query NocoDB for the matching PO, its line items, the associated vendor (with aliases), and existing invoices (for duplicate detection).
 5. **Matching Engine:** The Node.js microservice validates 12+ rules including amounts, currencies, vendors, line items, duplicates, and PO approval status.
@@ -157,7 +157,7 @@
 ### 1. AI Extraction — Google Gemini 2.5 Flash
 - **Choice:** Submit PDFs as `inline_data` (base64) in the multimodal Gemini API call.
 - **Reasoning:** Eliminates the need for a separate PDF-to-text conversion step. Gemini's vision capability handles both text-based and image-based PDFs natively, making the pipeline simpler and more robust against varied invoice formats.
-- **OCR Fallback:** A secondary prompt with explicit OCR instructions is used when text quality is poor, with a capped confidence score to signal lower certainty downstream.
+- **OCR & Quality Detection:** Gemini is instructed to evaluate the visual clarity of the document. For scanned/low-resolution documents, it sets `ocr_used` to true and caps the confidence score at `0.75` to automatically trigger a procurement review.
 
 ### 2. Matching Engine — Isolated Node.js Microservice
 - **Choice:** A separate Docker container (`matching-service`, port 4000) handles all business rule validation.
