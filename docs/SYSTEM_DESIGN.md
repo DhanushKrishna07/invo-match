@@ -133,7 +133,10 @@ A standalone Express.js service running in Docker (`matching-service:4000`).
 | R08 | Tax calculation correctness | Minor | Review if wrong |
 | R09 | Line item count match | Major | Rejected if extra/missing |
 | R10 | Line item price match (per-item, with tolerance) | Minor | Review if within tolerance |
-| R11 | Confidence score threshold | Minor | Review if < 0.80 |
+| R11 | Confidence score ≥ 0.80 | Minor | Review if < 0.80 |
+| R11b | Confidence score ≥ 0.60 | Critical | Rejected if < 0.60 |
+| R12 | Tax amount consistent with line items | Minor | Review if mismatch |
+| R13 | Single PO match (no duplicates in DB) | Minor | Review if multiple found |
 
 **Tolerance**: Configurable per PO (`tolerance_percent` and `tolerance_amount` fields).
 

@@ -264,7 +264,8 @@ Full audit trail showing the 3 system-logged events for INV-1001: `invoice_extra
 | Extra / Missing Line Items                    | Major    | Rejected            |
 | Price Mismatch (within tolerance)             | Minor    | Procurement Review  |
 | Tax Miscalculation                            | Minor    | Procurement Review  |
-| Low Confidence Extraction Score               | Minor    | Procurement Review  |
+| Low Confidence Extraction (< 0.80, ≥ 0.60)    | Minor    | Procurement Review  |
+| Low Confidence Extraction (< 0.60)            | Critical | Rejected            |
 | Multiple POs Found for Same PO Number         | Minor    | Procurement Review  |
 | Tax Inconsistent with Line Items              | Minor    | Procurement Review  |
 | All Checks Pass                               | —        | Ready for Payment   |
@@ -312,7 +313,8 @@ npm test
    Services started:
    - **n8n** → http://localhost:5678
    - **NocoDB** → http://localhost:8080
-   - **PostgreSQL** (internal)
+   - **PostgreSQL for n8n** (internal, port 5433)
+   - **PostgreSQL for NocoDB** (internal, port 5434)
    - **Matching Service** → http://localhost:4000
 
 4. **Seed the Database (NocoDB Tables & Sample Data):**
@@ -404,10 +406,14 @@ Invo_Match/
 │   └── verify-connections.py              # Local connection verification script
 ├── tests/
 │   ├── matching.test.js                   # 14 scenario unit tests
-│   └── normalize.test.js                  # 5 normalization unit tests
+│   ├── normalize.test.js                  # 5 normalization unit tests
+│   └── integration.test.js                # Integration tests (requires Docker)
 ├── data/
 │   ├── sample_invoices/                   # 12 test PDF invoices
-│   ├── seed_data/                         # PostgreSQL seed SQL (vendors, POs)
+│   ├── generate_pdfs.js                   # Script to regenerate sample PDF invoices
+│   ├── sample_purchase_orders.csv         # Seed data for POs
+│   ├── sample_vendors.csv                 # Seed data for vendors
+│   ├── sample_po_line_items.csv           # Seed data for PO line items
 │   └── expected_results.csv              # Integration test expectations
 ├── docs/
 │   ├── DEMO_STEPS.md                      # User Verification & Testing Guide

@@ -11,7 +11,7 @@ Discrepancy calculations are governed by rules defined inside the database and h
 - **Unit Price tolerance**: Default allowed price variance is **2.0%** or **100 INR** (or **5 USD**), whichever is larger.
 - **Subtotal (Net Amount) tolerance**: Checked similarly at **2.0%** of the PO's net amount.
 - **Rounding tolerance**: Float rounding issues up to **0.05** are marked as a Match.
-- **Quantity tolerance**: Only allowed on physical PO line items if explicitly configured; default behavior flags quantity overages immediately. Short shipments are allowed but flagged for reference.
+- **Quantity tolerance**: Only allowed on physical PO line items if explicitly configured; default behavior flags quantity overages immediately (within tolerance → Procurement Review; exceeding tolerance → Rejected). Missing PO line items (short shipments) are flagged as a **Major Mismatch** and result in Rejected status.
 
 ---
 
